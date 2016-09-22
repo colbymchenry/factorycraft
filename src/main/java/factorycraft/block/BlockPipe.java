@@ -1,5 +1,6 @@
 package factorycraft.block;
 
+import factorycraft.tileentity.PipeItem;
 import factorycraft.tileentity.TileEntityPipe;
 import net.minecraft.block.BlockContainer;
 import net.minecraft.block.material.Material;
@@ -37,7 +38,7 @@ public class BlockPipe extends BlockContainer
         if (world.getTileEntity(x, y, z) != null)
         {
             int rot = MathHelper.floor_double((double) (entity.rotationYaw * 4.0F / 360.0F) + 0.5D) & 3;
-            ((TileEntityPipe) world.getTileEntity(x, y, z)).setDirection(rot == 0 ? ForgeDirection.SOUTH : rot == 1 ? ForgeDirection.WEST : rot == 2 ? ForgeDirection.NORTH : ForgeDirection.EAST);
+            ((TileEntityPipe) world.getTileEntity(x, y, z)).setDirection(rot == 0 ? ForgeDirection.SOUTH : rot == 1 ? ForgeDirection.WEST : rot == 2 ? ForgeDirection.SOUTH : ForgeDirection.WEST);
         }
     }
 
@@ -47,7 +48,7 @@ public class BlockPipe extends BlockContainer
         if(player.getHeldItem() != null)
         {
             TileEntityPipe tileEntityPipe = (TileEntityPipe) world.getTileEntity(x, y, z);
-            tileEntityPipe.getItems().put(player.getHeldItem(), 0F);
+            tileEntityPipe.getPipeItems().add(new PipeItem(player.getHeldItem(), 0f));
         }
 
         return true;

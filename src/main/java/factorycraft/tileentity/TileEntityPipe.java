@@ -2,6 +2,7 @@ package factorycraft.tileentity;
 
 import factorycraft.BlockUtil;
 import factorycraft.EnergyProvider;
+import net.minecraft.init.Blocks;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.NetworkManager;
@@ -9,8 +10,11 @@ import net.minecraft.network.Packet;
 import net.minecraft.network.play.server.S35PacketUpdateTileEntity;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraftforge.common.util.ForgeDirection;
+import org.lwjgl.util.vector.Vector3f;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class TileEntityPipe extends TileEntity
@@ -24,7 +28,7 @@ public class TileEntityPipe extends TileEntity
     private long startTime = System.currentTimeMillis();
 
     // TODO: Can't use stacks as it won't allow more than one of the item
-    private Map<ItemStack, Float> items = new HashMap<>();
+    private List<PipeItem> pipeItems = new ArrayList<>();
 
     @Override
     public void readFromNBT(final NBTTagCompound tag)
@@ -61,7 +65,7 @@ public class TileEntityPipe extends TileEntity
                 if (surroundingTiles[i] instanceof EnergyProvider)
                 {
                     setPowered(true);
-                    transfer();
+                    getPipesToTransferTo();
                     return;
                 }
             }
@@ -87,21 +91,28 @@ public class TileEntityPipe extends TileEntity
             if (isPowered())
             {
                 // TODO: find a more elegant way to do this, this mod needs to be very optimized and clean and simple
-                Map<ItemStack, Float> newValues = new HashMap<ItemStack, Float>();
-                for (ItemStack stack : getTransferFrom().getItems().keySet())
-                {
-                    newValues.put(stack, getTransferFrom().getItems().get(stack) + 0.05F);
 
-                    if (newValues.get(stack) >= 1.0F)
+                List<TileEntityPipe> transferTo = getPipesToTransferTo();
+
+
+                // TODO: Fix odd overhang at junction
+                List<PipeItem> toRemove = new ArrayList<>();
+                for (PipeItem pipeItem : pipeItems)
+                {
+                    pipeItem.setCount(pipeItem.getCount() + 0.05f > 1f ? 1f : pipeItem.getCount() + 0.05f);
+                    if(pipeItem.getCount() >= 1f)
                     {
-                        items.put(stack, 0F);
-                        newValues.remove(stack);
+                        toRemove.add(pipeItem);
+                        pipeItem.setCount(0f);
+                        if(!transferTo.isEmpty())
+                        {
+                            transferTo.get(0).getPipeItems().add(pipeItem);
+                        }
                     }
                 }
 
-                getTransferFrom().setItems(newValues);
+                pipeItems.removeAll(toRemove);
 
-                transfer();
             }
         }
     }
@@ -148,27 +159,45 @@ public class TileEntityPipe extends TileEntity
         this.transferFrom = transferFrom;
     }
 
-    public Map<ItemStack, Float> getItems()
+    public List<PipeItem> getPipeItems()
     {
-        return items;
+        return pipeItems;
     }
 
-    public void setItems(Map<ItemStack, Float> items)
-    {
-        this.items = items;
-    }
-
-    public void transfer()
+    public List<TileEntityPipe> getPipesToTransferTo()
     {
         TileEntity[] surroundingTiles = BlockUtil.getSurroundingTiles(this);
+        List<TileEntityPipe> transferTo = new ArrayList<>();
 
         for (int i = surroundingTiles.length - 1; i > -1; i--)
         {
             if (surroundingTiles[i] != getTransferFrom() && surroundingTiles[i] instanceof TileEntityPipe)
             {
                 ((TileEntityPipe) surroundingTiles[i]).setTransferFrom(this);
+                transferTo.add((TileEntityPipe) surroundingTiles[i]);
             }
         }
+
+        return transferTo;
     }
 
+    public Vector3f getFlow()
+    {
+        if (getTransferFrom() != null)
+        {
+            switch (getDirection())
+            {
+                case SOUTH:
+                {
+                    return new Vector3f(getTransferFrom().xCoord > xCoord ? -1 : 1, 0.5F, 0.5F);
+                }
+                case WEST:
+                {
+                    return new Vector3f(0.5F, 0.5F, getTransferFrom().zCoord > zCoord ? -1 : 1);
+                }
+            }
+        }
+
+        return new Vector3f(0.5f, 0.5f, 0.5f);
+    }
 }
