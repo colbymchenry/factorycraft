@@ -1,8 +1,7 @@
 package factorycraft.tileentity;
 
-import factorycraft.block.BlockPipe;
-import net.minecraft.entity.item.EntityItem;
-import net.minecraft.init.Blocks;
+import factorycraft.BlockUtil;
+import factorycraft.EnergyProvider;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.NetworkManager;
@@ -10,7 +9,9 @@ import net.minecraft.network.Packet;
 import net.minecraft.network.play.server.S35PacketUpdateTileEntity;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraftforge.common.util.ForgeDirection;
-import org.lwjgl.Sys;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class TileEntityPipe extends TileEntity
 {
@@ -19,30 +20,22 @@ public class TileEntityPipe extends TileEntity
 
     private TileEntityPipe transferFrom;
     private ForgeDirection direction;
+    private boolean powered;
+    private long startTime = System.currentTimeMillis();
 
-    private int testCount = 0;
-
-    private ItemStack inTransit;
+    // TODO: Can't use stacks as it won't allow more than one of the item
+    private Map<ItemStack, Float> items = new HashMap<>();
 
     @Override
     public void readFromNBT(final NBTTagCompound tag)
     {
         super.readFromNBT(tag);
-
-        String[] transferFromTag = tag.getString("transferFrom").split(",");
-        transferFrom = (TileEntityPipe) getWorldObj().getTileEntity(Integer.valueOf(transferFromTag[0]),
-                Integer.valueOf(transferFromTag[1]), Integer.valueOf(transferFromTag[2]));
     }
 
     @Override
     public void writeToNBT(final NBTTagCompound tag)
     {
         super.writeToNBT(tag);
-
-        if (transferFrom != null)
-        {
-            tag.setString("transferFrom", transferFrom.xCoord + "," + transferFrom.yCoord + "," + transferFrom.zCoord);
-        }
     }
 
     @Override
@@ -50,32 +43,65 @@ public class TileEntityPipe extends TileEntity
     {
         super.updateEntity();
 
-        testCount = testCount + 1 > 51 ? 0 : testCount + 1;
-
-        if (testCount == 50)
+        if (((System.currentTimeMillis() - startTime) / 1000) % 1 == 0)
         {
-            if (getSurroundingPipes(this).length > 0)
+        } else
+        {
+            return;
+        }
+
+        // update based off engine speed
+        if (getTransferFrom() == null)
+        {
+            // find engine and update power status
+            TileEntity[] surroundingTiles = BlockUtil.getSurroundingTiles(this);
+
+            for (int i = surroundingTiles.length - 1; i > -1; i--)
             {
-                boolean foundPipe = false;
-                for (TileEntityPipe pipe : getSurroundingPipes(this))
+                if (surroundingTiles[i] instanceof EnergyProvider)
                 {
-                    if (pipe != transferFrom)
+                    setPowered(true);
+                    transfer();
+                    return;
+                }
+            }
+
+            // set powered to false if there is no transferFrom pipe
+            setPowered(false);
+        }
+
+
+        if (getTransferFrom() != null)
+        {
+            // if transfer from isn't powered, it's time to turn off all power and remove the transfer from pipe
+            if (!getTransferFrom().isPowered())
+            {
+                setTransferFrom(null);
+                setPowered(false);
+                return;
+            }
+
+            setPowered(getTransferFrom().isPowered());
+
+            // if it is powered transfer the product
+            if (isPowered())
+            {
+                // TODO: find a more elegant way to do this, this mod needs to be very optimized and clean and simple
+                Map<ItemStack, Float> newValues = new HashMap<ItemStack, Float>();
+                for (ItemStack stack : getTransferFrom().getItems().keySet())
+                {
+                    newValues.put(stack, getTransferFrom().getItems().get(stack) + 0.05F);
+
+                    if (newValues.get(stack) >= 1.0F)
                     {
-                        getWorldObj().setBlock(pipe.xCoord, pipe.yCoord + 1, zCoord, Blocks.leaves);
-                        if(inTransit != null)
-                        {
-                            pipe.setInTransit(inTransit);
-                            inTransit = null;
-                            foundPipe = true;
-                        }
-                        break;
+                        items.put(stack, 0F);
+                        newValues.remove(stack);
                     }
                 }
 
-                if (!foundPipe && inTransit != null)
-                {
-                    getWorldObj().spawnEntityInWorld(new EntityItem(getWorldObj(), xCoord, yCoord + 1, zCoord, inTransit));
-                }
+                getTransferFrom().setItems(newValues);
+
+                transfer();
             }
         }
     }
@@ -92,14 +118,24 @@ public class TileEntityPipe extends TileEntity
         super.onDataPacket(net, pkt);
     }
 
-    public void setInTransit(ItemStack inTransit)
+    public void setDirection(ForgeDirection direction)
     {
-        this.inTransit = inTransit;
+        this.direction = direction;
     }
 
-    public ItemStack getInTransit()
+    public ForgeDirection getDirection()
     {
-        return inTransit;
+        return direction;
+    }
+
+    public boolean isPowered()
+    {
+        return powered;
+    }
+
+    public void setPowered(boolean powered)
+    {
+        this.powered = powered;
     }
 
     public TileEntityPipe getTransferFrom()
@@ -112,64 +148,27 @@ public class TileEntityPipe extends TileEntity
         this.transferFrom = transferFrom;
     }
 
-    public void setDirection(ForgeDirection direction)
+    public Map<ItemStack, Float> getItems()
     {
-        this.direction = direction;
+        return items;
     }
 
-    public ForgeDirection getDirection()
+    public void setItems(Map<ItemStack, Float> items)
     {
-        return direction;
+        this.items = items;
     }
 
-    public static TileEntityPipe[] getSurroundingPipes(TileEntityPipe tileEntity)
+    public void transfer()
     {
-        int left = tileEntity.xCoord - 1;
-        int right = tileEntity.xCoord + 1;
-        int forward = tileEntity.zCoord + 1;
-        int backward = tileEntity.zCoord - 1;
-        int top = tileEntity.yCoord + 1;
-        int bottom = tileEntity.yCoord - 1;
+        TileEntity[] surroundingTiles = BlockUtil.getSurroundingTiles(this);
 
-        TileEntityPipe[] pipes = new TileEntityPipe[6];
-
-        int count = 0;
-        if (tileEntity.getWorldObj().getBlock(left, tileEntity.yCoord, tileEntity.zCoord) == BlockPipe.instance)
+        for (int i = surroundingTiles.length - 1; i > -1; i--)
         {
-            pipes[count++] = (TileEntityPipe) tileEntity.getWorldObj().getTileEntity(left, tileEntity.yCoord, tileEntity.zCoord);
+            if (surroundingTiles[i] != getTransferFrom() && surroundingTiles[i] instanceof TileEntityPipe)
+            {
+                ((TileEntityPipe) surroundingTiles[i]).setTransferFrom(this);
+            }
         }
-
-        if (tileEntity.getWorldObj().getBlock(right, tileEntity.yCoord, tileEntity.zCoord) == BlockPipe.instance)
-        {
-            pipes[count++] = (TileEntityPipe) tileEntity.getWorldObj().getTileEntity(right, tileEntity.yCoord, tileEntity.zCoord);
-        }
-
-        if (tileEntity.getWorldObj().getBlock(tileEntity.xCoord, tileEntity.yCoord, forward) == BlockPipe.instance)
-        {
-            pipes[count++] = (TileEntityPipe) tileEntity.getWorldObj().getTileEntity(tileEntity.xCoord, tileEntity.yCoord, forward);
-        }
-
-        if (tileEntity.getWorldObj().getBlock(tileEntity.xCoord, tileEntity.yCoord, backward) == BlockPipe.instance)
-        {
-            pipes[count++] = (TileEntityPipe) tileEntity.getWorldObj().getTileEntity(tileEntity.xCoord, tileEntity.yCoord, backward);
-        }
-
-        if (tileEntity.getWorldObj().getBlock(tileEntity.xCoord, top, tileEntity.zCoord) == BlockPipe.instance)
-        {
-            pipes[count++] = (TileEntityPipe) tileEntity.getWorldObj().getTileEntity(tileEntity.xCoord, top, tileEntity.zCoord);
-        }
-
-        if (tileEntity.getWorldObj().getBlock(tileEntity.xCoord, bottom, tileEntity.zCoord) == BlockPipe.instance)
-        {
-            pipes[count++] = (TileEntityPipe) tileEntity.getWorldObj().getTileEntity(tileEntity.xCoord, bottom, tileEntity.zCoord);
-        }
-
-        TileEntityPipe[] toReturn = new TileEntityPipe[count];
-        for (int i = 0; i < count; i++)
-        {
-            toReturn[i] = pipes[i];
-        }
-
-        return toReturn;
     }
+
 }

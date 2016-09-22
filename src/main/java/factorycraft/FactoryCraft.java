@@ -5,6 +5,7 @@ import cpw.mods.fml.common.SidedProxy;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.registry.GameRegistry;
+import factorycraft.block.BlockEngine;
 import factorycraft.block.BlockFuel;
 import factorycraft.block.BlockOil;
 import factorycraft.block.BlockPipe;
@@ -12,6 +13,7 @@ import factorycraft.fluid.FluidFuel;
 import factorycraft.fluid.FluidOil;
 import factorycraft.item.BucketFuel;
 import factorycraft.item.BucketOil;
+import factorycraft.tileentity.TileEntityEngine;
 import factorycraft.tileentity.TileEntityPipe;
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
@@ -54,6 +56,10 @@ public final class FactoryCraft
         // register pipe
         GameRegistry.registerTileEntity(TileEntityPipe.class, TileEntityPipe.name);
         GameRegistry.registerBlock(BlockPipe.instance, BlockPipe.name);
+
+        // register engine
+        GameRegistry.registerTileEntity(TileEntityEngine.class, TileEntityEngine.name);
+        GameRegistry.registerBlock(BlockEngine.instance, BlockEngine.name);
 
         proxy.preInit(event);
     }

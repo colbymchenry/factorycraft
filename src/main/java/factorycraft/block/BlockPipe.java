@@ -4,12 +4,13 @@ import factorycraft.tileentity.TileEntityPipe;
 import net.minecraft.block.BlockContainer;
 import net.minecraft.block.material.Material;
 import net.minecraft.creativetab.CreativeTabs;
+import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
-import net.minecraft.world.IBlockAccess;
+import net.minecraft.util.MathHelper;
 import net.minecraft.world.World;
+import net.minecraftforge.common.util.ForgeDirection;
 
 public class BlockPipe extends BlockContainer
 {
@@ -21,6 +22,7 @@ public class BlockPipe extends BlockContainer
     {
         super(Material.iron);
         setCreativeTab(CreativeTabs.tabBlock);
+        setBlockName(name);
     }
 
     @Override
@@ -30,37 +32,42 @@ public class BlockPipe extends BlockContainer
     }
 
     @Override
-    public void onNeighborChange(final IBlockAccess world, final int x, final int y, final int z, final int tileX, final int tileY, final int tileZ)
+    public void onBlockPlacedBy(World world, int x, int y, int z, EntityLivingBase entity, ItemStack itemInHand)
     {
-        TileEntity tileEntity = world.getTileEntity(tileX, tileY, tileZ);
-
-        if(!(tileEntity instanceof TileEntityPipe))
+        if (world.getTileEntity(x, y, z) != null)
         {
-            return;
+            int rot = MathHelper.floor_double((double) (entity.rotationYaw * 4.0F / 360.0F) + 0.5D) & 3;
+            ((TileEntityPipe) world.getTileEntity(x, y, z)).setDirection(rot == 0 ? ForgeDirection.SOUTH : rot == 1 ? ForgeDirection.WEST : rot == 2 ? ForgeDirection.NORTH : ForgeDirection.EAST);
         }
-
-        TileEntityPipe thisPipe = (TileEntityPipe) world.getTileEntity(x, y, z);
-
-        TileEntityPipe[] surroundingPipes = TileEntityPipe.getSurroundingPipes(thisPipe);
-
-        for(TileEntityPipe pipe : surroundingPipes)
-        {
-            if(pipe == tileEntity)
-            {
-                ((TileEntityPipe) tileEntity).setDirection(thisPipe.getDirection());
-                break;
-            }
-        }
-
-        ((TileEntityPipe) tileEntity).setTransferFrom(thisPipe);
     }
 
     @Override
-    public boolean onBlockActivated(World world, int x, int y, int z, EntityPlayer player, int side, float p_149727_7_, float p_149727_8_, float p_149727_9_)
+    public boolean onBlockActivated(World world, int x, int y, int z, EntityPlayer player, int p_149727_6_, float p_149727_7_, float p_149727_8_, float p_149727_9_)
     {
-        // TODO: Work on reversing the direction.
-        System.out.println("CALLED");
-        ((TileEntityPipe) world.getTileEntity(x, y, z)).setInTransit(new ItemStack(Items.blaze_rod));
-        return super.onBlockActivated(world, x, y, z, player, side, p_149727_7_, p_149727_8_, p_149727_9_);
+        if(player.getHeldItem() != null)
+        {
+            TileEntityPipe tileEntityPipe = (TileEntityPipe) world.getTileEntity(x, y, z);
+            tileEntityPipe.getItems().put(player.getHeldItem(), 0F);
+        }
+
+        return true;
+    }
+
+    @Override
+    public boolean renderAsNormalBlock()
+    {
+        return false;
+    }
+
+    @Override
+    public int getRenderType()
+    {
+        return -1;
+    }
+
+    @Override
+    public boolean isOpaqueCube()
+    {
+        return false;
     }
 }

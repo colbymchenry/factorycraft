@@ -2,3 +2,5 @@ tile.oil.name=Oil
 item.bucketOil.name=Oil Bucket
 tile.fuel.name=Fuel
 item.bucketFuel.name=Fuel Bucket
+tile.pipe.name=Pipe
+tile.engine.name=Engine
