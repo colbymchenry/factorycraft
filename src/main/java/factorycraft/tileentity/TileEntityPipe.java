@@ -1,203 +1,164 @@
 package factorycraft.tileentity;
 
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import factorycraft.BlockUtil;
-import factorycraft.EnergyProvider;
 import net.minecraft.init.Blocks;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.network.NetworkManager;
-import net.minecraft.network.Packet;
-import net.minecraft.network.play.server.S35PacketUpdateTileEntity;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraftforge.common.util.ForgeDirection;
-import org.lwjgl.util.vector.Vector3f;
 
-import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
 public class TileEntityPipe extends TileEntity
 {
 
-    public static final String name = "tileentitypipe";
-
-    private TileEntityPipe transferFrom;
-    private ForgeDirection direction;
-    private boolean powered;
-    private long startTime = System.currentTimeMillis();
-
-    // TODO: Can't use stacks as it won't allow more than one of the item
-    private List<PipeItem> pipeItems = new ArrayList<>();
-
-    @Override
-    public void readFromNBT(final NBTTagCompound tag)
-    {
-        super.readFromNBT(tag);
-    }
-
-    @Override
-    public void writeToNBT(final NBTTagCompound tag)
-    {
-        super.writeToNBT(tag);
-    }
+    private TileEntityPipe parentPipe;
+    public ForgeDirection direction;
+    private List<ItemStackPipeObject> items = Lists.newArrayList(); // size = how much flow
+    private int maxItems = 10; // max flow
 
     @Override
     public void updateEntity()
     {
-        super.updateEntity();
+        List<TileEntityPipe> connections = getConnections();
+        connections.remove(parentPipe);
+        TileEntityPipe lowestLevelPipe = getLowestLevelPipe(connections);
 
-        if (((System.currentTimeMillis() - startTime) / 1000) % 1 == 0)
+        if (items.isEmpty())
         {
-        } else
+            parentPipe = null;
+        }
+
+        if (connections.isEmpty())
         {
+            if (parentPipe != null)
+            {
+                Iterator<ItemStackPipeObject> iterator = items.iterator();
+                while (iterator.hasNext())
+                {
+                    ItemStackPipeObject pipeObject = iterator.next();
+                    pipeObject.endPoint.x = parentPipe.xCoord < xCoord ? xCoord + 1 : parentPipe.xCoord > xCoord ? xCoord - 1 : xCoord;
+                    pipeObject.endPoint.y = parentPipe.yCoord - pipeObject.endPoint.y;
+                    pipeObject.endPoint.z = parentPipe.zCoord < zCoord ? zCoord + 1 : parentPipe.zCoord > zCoord ? zCoord - 1 : zCoord;
+
+                    pipeObject.increment(0.02f);
+
+                    if (pipeObject.location >= 1f)
+                    {
+                        pipeObject.location = 1f;
+                    }
+                }
+            }
             return;
         }
 
-        // update based off engine speed
-        if (getTransferFrom() == null)
+        Iterator<ItemStackPipeObject> iterator = items.iterator();
+        while (iterator.hasNext())
         {
-            // find engine and update power status
-            TileEntity[] surroundingTiles = BlockUtil.getSurroundingTiles(this);
+            ItemStackPipeObject pipeObject = iterator.next();
 
-            for (int i = surroundingTiles.length - 1; i > -1; i--)
+            if (pipeObject.endPoint.x == 0 && pipeObject.endPoint.y == 0 && pipeObject.endPoint.z == 0)
             {
-                if (surroundingTiles[i] instanceof EnergyProvider)
-                {
-                    setPowered(true);
-                    getPipesToTransferTo();
-                    return;
-                }
+                pipeObject.endPoint.x = lowestLevelPipe.xCoord;
+                pipeObject.endPoint.y = lowestLevelPipe.yCoord;
+                pipeObject.endPoint.z = lowestLevelPipe.zCoord;
             }
 
-            // set powered to false if there is no transferFrom pipe
-            setPowered(false);
-        }
+            pipeObject.increment(0.02f);
 
-
-        if (getTransferFrom() != null)
-        {
-            // if transfer from isn't powered, it's time to turn off all power and remove the transfer from pipe
-            if (!getTransferFrom().isPowered())
+            if (pipeObject.location >= 1f)
             {
-                setTransferFrom(null);
-                setPowered(false);
-                return;
-            }
 
-            setPowered(getTransferFrom().isPowered());
+                lowestLevelPipe = (TileEntityPipe) getWorldObj().getTileEntity(pipeObject.endPoint.x, pipeObject.endPoint.y, pipeObject.endPoint.z);
 
-            // if it is powered transfer the product
-            if (isPowered())
-            {
-                // TODO: find a more elegant way to do this, this mod needs to be very optimized and clean and simple
-
-                List<TileEntityPipe> transferTo = getPipesToTransferTo();
-
-
-                // TODO: Fix odd overhang at junction
-                List<PipeItem> toRemove = new ArrayList<>();
-                for (PipeItem pipeItem : pipeItems)
+                if (lowestLevelPipe.addItem(pipeObject))
                 {
-                    pipeItem.setCount(pipeItem.getCount() + 0.05f > 1f ? 1f : pipeItem.getCount() + 0.05f);
-                    if(pipeItem.getCount() >= 1f)
-                    {
-                        toRemove.add(pipeItem);
-                        pipeItem.setCount(0f);
-                        if(!transferTo.isEmpty())
-                        {
-                            transferTo.get(0).getPipeItems().add(pipeItem);
-                        }
-                    }
+                    pipeObject.location = 0f;
+                    iterator.remove();
+                    lowestLevelPipe.parentPipe = this;
+
+                    List<TileEntityPipe> connections1 = lowestLevelPipe.getConnections();
+                    connections1.remove(lowestLevelPipe.parentPipe);
+                    TileEntityPipe lowestLevelPipe1 = lowestLevelPipe.getLowestLevelPipe(connections1);
+
+                    pipeObject.endPoint.x = lowestLevelPipe1.xCoord;
+                    pipeObject.endPoint.y = lowestLevelPipe1.yCoord;
+                    pipeObject.endPoint.z = lowestLevelPipe1.zCoord;
                 }
-
-                pipeItems.removeAll(toRemove);
-
             }
         }
     }
 
-    @Override
-    public Packet getDescriptionPacket()
+    public boolean addItem(ItemStackPipeObject pipeObject)
     {
-        return super.getDescriptionPacket();
+        if (items.size() < maxItems)
+        {
+            items.add(pipeObject);
+            return true;
+        }
+
+        return false;
     }
 
-    @Override
-    public void onDataPacket(final NetworkManager net, final S35PacketUpdateTileEntity pkt)
+    public TileEntityPipe getLowestLevelPipe(List<TileEntityPipe> pipes)
     {
-        super.onDataPacket(net, pkt);
-    }
+        if (pipes.isEmpty())
+        {
+            return this;
+        }
 
-    public void setDirection(ForgeDirection direction)
-    {
-        this.direction = direction;
-    }
+        TileEntityPipe lowestLevelPipe = pipes.get(0);
+        Map<TileEntityPipe, Integer> itemsToPipes = Maps.newHashMap();
 
-    public ForgeDirection getDirection()
-    {
-        return direction;
-    }
+        for (TileEntityPipe pipe : pipes)
+        {
+            int itemsGoingToPipe = 0;
+            for (ItemStackPipeObject pipeObject : items)
+            {
+                if (pipeObject.endPoint.x == pipe.xCoord &&
+                        pipeObject.endPoint.y == pipe.yCoord &&
+                        pipeObject.endPoint.z == pipe.zCoord)
+                {
+                    itemsGoingToPipe++;
+                }
+            }
 
-    public boolean isPowered()
-    {
-        return powered;
-    }
+            itemsToPipes.put(pipe, itemsGoingToPipe);
+        }
 
-    public void setPowered(boolean powered)
-    {
-        this.powered = powered;
-    }
+        for (TileEntityPipe pipe : itemsToPipes.keySet())
+        {
+            if (itemsToPipes.get(pipe) < itemsToPipes.get(lowestLevelPipe))
+            {
+                lowestLevelPipe = pipe;
+            }
+        }
 
-    public TileEntityPipe getTransferFrom()
-    {
-        return transferFrom;
+        return lowestLevelPipe;
     }
+    // TODO: CLEAN UP CODE
 
-    public void setTransferFrom(TileEntityPipe transferFrom)
-    {
-        this.transferFrom = transferFrom;
-    }
-
-    public List<PipeItem> getPipeItems()
-    {
-        return pipeItems;
-    }
-
-    public List<TileEntityPipe> getPipesToTransferTo()
+    private List<TileEntityPipe> getConnections()
     {
         TileEntity[] surroundingTiles = BlockUtil.getSurroundingTiles(this);
-        List<TileEntityPipe> transferTo = new ArrayList<>();
+        List<TileEntityPipe> pipes = Lists.newArrayList();
 
-        for (int i = surroundingTiles.length - 1; i > -1; i--)
+        for (TileEntity te : surroundingTiles)
         {
-            if (surroundingTiles[i] != getTransferFrom() && surroundingTiles[i] instanceof TileEntityPipe)
+            if (te instanceof TileEntityPipe)
             {
-                ((TileEntityPipe) surroundingTiles[i]).setTransferFrom(this);
-                transferTo.add((TileEntityPipe) surroundingTiles[i]);
+                pipes.add((TileEntityPipe) te);
             }
         }
 
-        return transferTo;
+        return pipes;
     }
 
-    public Vector3f getFlow()
+    public ItemStackPipeObject[] getItems()
     {
-        if (getTransferFrom() != null)
-        {
-            switch (getDirection())
-            {
-                case SOUTH:
-                {
-                    return new Vector3f(getTransferFrom().xCoord > xCoord ? -1 : 1, 0.5F, 0.5F);
-                }
-                case WEST:
-                {
-                    return new Vector3f(0.5F, 0.5F, getTransferFrom().zCoord > zCoord ? -1 : 1);
-                }
-            }
-        }
-
-        return new Vector3f(0.5f, 0.5f, 0.5f);
+        return items.toArray(new ItemStackPipeObject[items.size()]);
     }
 }

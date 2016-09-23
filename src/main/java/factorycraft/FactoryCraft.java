@@ -54,7 +54,7 @@ public final class FactoryCraft
         MinecraftForge.EVENT_BUS.register(BucketFuel.instance);
 
         // register pipe
-        GameRegistry.registerTileEntity(TileEntityPipe.class, TileEntityPipe.name);
+        GameRegistry.registerTileEntity(TileEntityPipe.class, "tileentitypipe");
         GameRegistry.registerBlock(BlockPipe.instance, BlockPipe.name);
 
         // register engine
